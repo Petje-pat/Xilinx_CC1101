@@ -96,7 +96,13 @@
 #define CC1101_TXFIFO       0x3F		// Only for write operation
 #define CC1101_RXFIFO       0x3F		// Only for read operation
 
+//CC1101 Other constants
+#define	  MAX_DATA       	60
 
+
+extern volatile int TransferInProgress;
+extern int Error;
+/****************CC1101 functions****************/
 void CC1101_writeReg(XSpiPs *SpiPtr, char addr, char value);
 void CC1101_writeBurstReg(XSpiPs *SpiPtr, char addr, char* buffer, char num);
 void CC1101_writeStrobe(XSpiPs *SpiPtr, char addr);
@@ -119,7 +125,7 @@ void CC1101_setRX(XSpiPs* SpiPtr);
 void CC1101_sendData(XSpiPs* SpiPtr, char *txBuffer, char size);
 char CC1101_receiveData(XSpiPs* SpiPtr, char *rxBuffer);
 
-
-
+/****************Interrupt setup****************/
+//void SpiPsHandler(void *CallBackRef, u32 StatusEvent, unsigned int ByteCount);
 
 #endif	/* CC1101_H */ /* end of protection macro */

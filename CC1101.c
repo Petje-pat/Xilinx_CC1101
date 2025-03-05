@@ -1,5 +1,7 @@
 #include "CC1101.h"
 
+#include "xil_printf.h"
+
 /************************** Constant Definitions *****************************/
 
 											//write single not used because it is 0x00
@@ -8,14 +10,13 @@
 #define   READ_BURST        0xC0            //read burst
 #define   BYTES_IN_RXFIFO   0x7F            //byte number in RXfifo
 
-#define	  MAX_DATA       	60
 
 #define   ADDRESS_OFFSET	0		// Address to read or write too
 #define	  DATA_OFFSET		1		// Start of data to read or write
 
 /***************** Macros (Inline Functions) Definitions *********************/
 
-#define map(x, in_min, in_max, out_min, out_max)	(((x) - (in_min)) * ((out_max) - (out_min)) / ((in_max) - (in_min)) + (out_min))
+#define map(x, in_min, in_max, out_min, out_max)(((x) - (in_min)) * ((out_max) - (out_min)) / ((in_max) - (in_min)) + (out_min))
 
 
 
@@ -55,13 +56,16 @@ char clb2[2]= {31,38};
 char clb3[2]= {65,76};
 char clb4[2]= {77,79};
 
-char TransferInProgress = FALSE;
+//volatile char TransferInProgress = FALSE;
+volatile int TransferInProgress = FALSE;
+int Error = 0;
+char interrupt = FALSE;
 
 u8 writeBuffer[MAX_DATA + DATA_OFFSET];
 u8 readBuffer [MAX_DATA + DATA_OFFSET /*+ DUMMY_SIZE*/];
 
 /****************************************************************/
-uint8_t PA_TABLE[8]      = {0x00,0xC0,0x00,0x00,0x00,0x00,0x00,0x00};
+char PA_TABLE[8]      = {0x00,0xC0,0x00,0x00,0x00,0x00,0x00,0x00};
 //                          -30  -20  -15  -10   0    5    7    10
 uint8_t PA_TABLE_315[8]  = {0x12,0x0D,0x1C,0x34,0x51,0x85,0xCB,0xC2,};             //300 - 348
 uint8_t PA_TABLE_433[8]  = {0x12,0x0E,0x1D,0x34,0x60,0x84,0xC8,0xC0,};             //387 - 464
@@ -71,6 +75,22 @@ uint8_t PA_TABLE_868[10] = {0x03,0x17,0x1D,0x26,0x37,0x50,0x86,0xCD,0xC5,0xC0,};
 uint8_t PA_TABLE_915[10] = {0x03,0x0E,0x1E,0x27,0x38,0x8E,0x84,0xCC,0xC3,0xC0,};  //900 - 928
 
 /****************************************************************/
+
+/******************************************************************************
+*
+* This function sets the mode for XSpiPS transfer. The default mode is polled.
+*
+* @param	interruptBool, TRUE for using interrupt and FALSE for using polling
+*
+* @return	None.
+*
+* @note		None.
+*
+******************************************************************************/
+void CC1101_setInterrupt(char interruptBool){
+	interrupt = interruptBool;
+}
+
 
 /******************************************************************************
 *
@@ -89,9 +109,21 @@ uint8_t PA_TABLE_915[10] = {0x03,0x0E,0x1E,0x27,0x38,0x8E,0x84,0xCC,0xC3,0xC0,};
 void CC1101_writeReg(XSpiPs *SpiPtr, char addr, char value){
 	u8 tempBuffer[]={addr,value};
 
-	TransferInProgress = TRUE;
-	XSpiPs_Transfer(SpiPtr, tempBuffer, NULL, sizeof(tempBuffer));
-	while (TransferInProgress);
+	if (interrupt){
+		TransferInProgress = TRUE;
+		XSpiPs_Transfer(SpiPtr, tempBuffer, NULL, sizeof(tempBuffer));
+
+		int i=0;
+		while (TransferInProgress){
+			i++;
+			if (i>1000000){
+				xil_printf("transfer in progress failed \r\n");
+				break;
+			}
+		}
+	}else{
+		XSpiPs_PolledTransfer(SpiPtr, tempBuffer, NULL, sizeof(tempBuffer));
+	}
 }
 
 
@@ -111,13 +143,24 @@ void CC1101_writeReg(XSpiPs *SpiPtr, char addr, char value){
 *
 ******************************************************************************/
 void CC1101_writeBurstReg(XSpiPs *SpiPtr, char addr, char* buffer, char num){
-
 	writeBuffer[ADDRESS_OFFSET] = (addr | WRITE_BURST);
 	memcpy(writeBuffer+DATA_OFFSET, buffer, num);
 
-	TransferInProgress = TRUE;
-	XSpiPs_Transfer(SpiPtr, writeBuffer, NULL, num+DATA_OFFSET);
-	while (TransferInProgress);
+	if(interrupt){
+		TransferInProgress = TRUE;
+		XSpiPs_Transfer(SpiPtr, writeBuffer, NULL, num+DATA_OFFSET);
+
+		int i=0;
+		while (TransferInProgress){
+			i++;
+			if (i>1000000){
+				xil_printf("transfer in progress failed \r\n");
+				break;
+			}
+		}
+	}else{
+		XSpiPs_PolledTransfer(SpiPtr, writeBuffer, NULL, num+DATA_OFFSET);
+	}
 }
 
 
@@ -137,9 +180,22 @@ void CC1101_writeBurstReg(XSpiPs *SpiPtr, char addr, char* buffer, char num){
 void CC1101_writeStrobe(XSpiPs *SpiPtr, char addr){
 	u8 tempBuffer=addr;
 
-	TransferInProgress = TRUE;
-	XSpiPs_Transfer(SpiPtr, &tempBuffer, NULL, sizeof(tempBuffer));
-	while (TransferInProgress);
+	if (interrupt){
+		TransferInProgress = TRUE;
+		XSpiPs_Transfer(SpiPtr, &tempBuffer, NULL, sizeof(tempBuffer));
+
+		int i=0;
+		while (TransferInProgress){
+			i++;
+			if (i>1000000){
+				xil_printf("transfer in progress failed \r\n");
+				break;
+			}
+		}
+	}else{
+		XSpiPs_PolledTransfer(SpiPtr, &tempBuffer, NULL, sizeof(tempBuffer));
+	}
+
 }
 
 
@@ -151,19 +207,31 @@ void CC1101_writeStrobe(XSpiPs *SpiPtr, char addr){
 * @param	SpiPtr is a pointer to the SPI driver component to use.
 * @param	addr contains the address of the register.
 *
-* @return	None.
+* @return	Value from the specified register.
 *
 * @note		None.
 *
 ******************************************************************************/
 char CC1101_readReg(XSpiPs *SpiPtr, char addr){
-	u8 tempBuffer=addr;
+	u8 tempBuffer[]={(addr|READ_SINGLE),0};
 
-	TransferInProgress = TRUE;
-	XSpiPs_Transfer(SpiPtr, &tempBuffer, &tempBuffer, sizeof(tempBuffer));
-	while (TransferInProgress);
+	if (interrupt){
+		TransferInProgress = TRUE;
+		XSpiPs_Transfer(SpiPtr, tempBuffer, tempBuffer, sizeof(tempBuffer));
 
-	return tempBuffer;
+		int i = 0;
+		while (TransferInProgress){
+			i++;
+			if (i>1000000){
+				xil_printf("transfer in progress failed \r\n");
+				break;
+			}
+		}
+	}else{
+		XSpiPs_PolledTransfer(SpiPtr, tempBuffer, tempBuffer, sizeof(tempBuffer));
+	}
+
+	return tempBuffer[DATA_OFFSET];
 }
 
 
@@ -185,11 +253,23 @@ char CC1101_readReg(XSpiPs *SpiPtr, char addr){
 void CC1101_readBurstReg(XSpiPs *SpiPtr, char addr, char* buffer, char num){
 	writeBuffer[ADDRESS_OFFSET] = (addr | READ_BURST);
 
-	TransferInProgress = TRUE;
-	XSpiPs_Transfer(SpiPtr, writeBuffer, readBuffer, num);
-	while (TransferInProgress);
+	if (interrupt){
+		TransferInProgress = TRUE;
+		XSpiPs_Transfer(SpiPtr, writeBuffer, readBuffer, num);
 
-	memcpy(buffer, readBuffer, num);
+		int i = 0;
+		while (TransferInProgress){
+			i++;
+			if (i>1000000){
+				xil_printf("transfer in progress failed \r\n");
+				break;
+			}
+		}
+	}else{
+		XSpiPs_PolledTransfer(SpiPtr, writeBuffer, readBuffer, num);
+	}
+
+	memcpy(buffer, readBuffer+DATA_OFFSET, num);
 }
 
 
@@ -201,17 +281,31 @@ void CC1101_readBurstReg(XSpiPs *SpiPtr, char addr, char* buffer, char num){
 * @param	SpiPtr is a pointer to the SPI driver component to use.
 * @param	addr contains the address to read data from.
 *
-* @return	value from the specified register
+* @return	Value from the specified register.
 *
 * @note		None.
 *
 ******************************************************************************/
 char CC1101_readStatus(XSpiPs *SpiPtr, char addr){
-	u8 tempBuffer = (addr | READ_BURST);
-	TransferInProgress = TRUE;
-	XSpiPs_Transfer(SpiPtr, &tempBuffer, &tempBuffer, sizeof(tempBuffer));
-	while (TransferInProgress);
-	return tempBuffer;
+	u8 tempBuffer[] = {(addr | READ_BURST),0};
+
+	if (interrupt){
+		TransferInProgress = TRUE;
+		XSpiPs_Transfer(SpiPtr, tempBuffer, tempBuffer, sizeof(tempBuffer));
+
+		int i = 0;
+		while (TransferInProgress){
+			i++;
+			if (i>1000000){
+				xil_printf("transfer in progress failed \r\n");
+				break;
+			}
+		}
+	}else{
+		XSpiPs_PolledTransfer(SpiPtr, tempBuffer, tempBuffer, sizeof(tempBuffer));
+	}
+
+	return tempBuffer[DATA_OFFSET];
 }
 
 
@@ -704,3 +798,4 @@ char CC1101_receiveData(XSpiPs* SpiPtr, char *rxBuffer){
 		return 0;
 	}
 }
+
