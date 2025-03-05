@@ -4,5 +4,6 @@ De library is afhankelijk van de XSpiPs.h library om over de SPI te kunnen commu
 
 ## functies
  - [x] Aansturen van module en data verzenden en ontvangen over de antenne.
+ - [X] Voorbeeld werkt via polling
  - [ ] Interrupt initializeren.
- - [ ] Zorgen dat het ook werkt met Vitis 2024.2.
+ - [?] Zorgen dat het ook werkt met Vitis 2024.2. (nog niet getest)
