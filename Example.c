@@ -1,6 +1,6 @@
 /* ---------------------------------------------------------------------------- *
  * Description :
- * Example of using interrupts of the scu timer. An interrupt is generated every 1 second
+ * Example of using the CC1101
  *
  *
  * Note :
@@ -12,11 +12,9 @@
  * please be so kind to constructively report this to the authors of the demo code.
  *
  * Authors:
- * 		Jeedella Jeedella, j.jeedella@fontys.nl
- * 		Brice Guayrin, b.guayrin@fontys.nl
- *		Harold Benton, h.benton@fontys.nl
+ * 		Patrick Huisman
  *
- * Date: November 2024
+ * Date: March 2025
  * ---------------------------------------------------------------------------- */
 
 
