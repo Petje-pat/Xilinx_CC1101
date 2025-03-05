@@ -103,6 +103,7 @@
 extern volatile int TransferInProgress;
 extern int Error;
 /****************CC1101 functions****************/
+void CC1101_setInterrupt(char interruptBool);
 void CC1101_writeReg(XSpiPs *SpiPtr, char addr, char value);
 void CC1101_writeBurstReg(XSpiPs *SpiPtr, char addr, char* buffer, char num);
 void CC1101_writeStrobe(XSpiPs *SpiPtr, char addr);
