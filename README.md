@@ -1,9 +1,10 @@
 # Xilinx_CC1101
-Deze library is gebaseerd is de arduino library van https://github.com/LSatan/SmartRC-CC1101-Driver-Lib.
-De library is afhankelijk van de XSpiPs.h library om over de SPI te kunnen communiceren.
+This library is based is the arduino library from https://github.com/LSatan/SmartRC-CC1101-Driver-Lib. Full documentation and wire diagrams can be found there.
+The library depends on the XSpiPs.h and Gpio.h library to communicate over SPI and receive state information over gpio pins.
 
-## functies
- - [x] Aansturen van module en data verzenden en ontvangen over de antenne.
- - [X] Voorbeeld werkt via polling
- - [ ] Interrupt initializeren.
- - [?] Zorgen dat het ook werkt met Vitis 2024.2. (nog niet getest)
+## features
+ - [x] Controlling the module and sending and receiving data.
+ - [X] Examples work by polling
+ - [ ] Interrupt based.
+ - [X] Should work with and without System Device Tree (SDT) as introduced in Vitis 2023.2
+ 
