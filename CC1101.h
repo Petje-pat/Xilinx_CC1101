@@ -98,33 +98,37 @@
 
 //CC1101 Other constants
 #define	  MAX_DATA       	60
+#define	CC1101_CRYSTAL_FREQ	26
 
 
 extern volatile int TransferInProgress;
 extern int Error;
 /****************CC1101 functions****************/
-void CC1101_setInterrupt(char interruptBool);
-void CC1101_writeReg(XSpiPs *SpiPtr, char addr, char value);
-void CC1101_writeBurstReg(XSpiPs *SpiPtr, char addr, char* buffer, char num);
-void CC1101_writeStrobe(XSpiPs *SpiPtr, char addr);
-char CC1101_readReg(XSpiPs *SpiPtr, char addr);
-void CC1101_readBurstReg(XSpiPs *SpiPtr, char addr, char* buffer, char num);
-char CC1101_readStatus(XSpiPs *SpiPtr, char addr);
-void CC1101_setCCMode(XSpiPs *SpiPtr, char s);
-void CC1101_setModulation(XSpiPs *SpiPtr, char m);
+void CC1101_setInterrupt(u8 interruptBool);
+void CC1101_init(XSpiPs *SpiPtr);
+void CC1101_writeReg(XSpiPs *SpiPtr, u8 addr, u8 value);
+void CC1101_writeBurstReg(XSpiPs *SpiPtr, u8 addr, u8* buffer, u8 num);
+u8	 CC1101_writeStrobe(XSpiPs *SpiPtr, u8 addr);
+u8	 CC1101_readReg(XSpiPs *SpiPtr, u8 addr);
+void CC1101_readBurstReg(XSpiPs *SpiPtr, u8 addr, u8* buffer, u8 num);
+u8	 CC1101_readStatus(XSpiPs *SpiPtr, u8 addr);
+void CC1101_setCCMode(XSpiPs *SpiPtr, u8 s);
+void CC1101_setModulation(XSpiPs *SpiPtr, u8 m);
 void CC1101_setMHZ(XSpiPs *SpiInstancePtr, float mhz);
-void CC1101_calibrate(XSpiPs *SpiPtr);
 void CC1101_setPA(XSpiPs *SpiPtr, int p);
-void CC1101_split_PKTCTRL1(XSpiPs* SpiPtr);
-void CC1101_split_PKTCTRL0(XSpiPs* SpiPtr);
-void CC1101_split_MDMCFG4(XSpiPs* SpiPtr);
-void CC1101_split_MDMCFG2(XSpiPs* SpiPtr);
-void CC1101_split_MDMCFG1(XSpiPs* SpiPtr);
-void CC1101_regConfigSettings(XSpiPs* SpiPtr);
 void CC1101_setTX(XSpiPs* SpiPtr);
 void CC1101_setRX(XSpiPs* SpiPtr);
-void CC1101_sendData(XSpiPs* SpiPtr, char *txBuffer, char size);
-char CC1101_receiveData(XSpiPs* SpiPtr, char *rxBuffer);
+void CC1101_sendData(XSpiPs* SpiPtr, u8 *txBuffer, u8 size);
+u8	 CC1101_receiveData(XSpiPs* SpiPtr, u8 *rxBuffer);
+
+void CC1101_setSyncMode(XSpiPs* SpiPtr, u8 v);
+void CC1101_setCRC(XSpiPs* SpiPtr, u8 v);
+void CC1101_setDRate(XSpiPs* SpiPtr, double d);
+u8	 CC1101_checkReceiveFlag(XSpiPs* SpiPtr);
+u8	 CC1101_getRssi(XSpiPs* SpiPtr);
+void CC1101_setFEC(XSpiPs* SpiPtr, u8 v);
+void CC1101_setLengthConfig(XSpiPs* SpiPtr, u8 v);
+void CC1101_setPacketLength(XSpiPs* SpiPtr, u8 l);
 
 /****************Interrupt setup****************/
 //void SpiPsHandler(void *CallBackRef, u32 StatusEvent, unsigned int ByteCount);

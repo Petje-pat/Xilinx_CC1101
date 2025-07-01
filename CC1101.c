@@ -2,17 +2,22 @@
 
 #include "xil_printf.h"
 
+#include "sleep.h"
+#include <math.h>
+
 /************************** Constant Definitions *****************************/
 
-											//write single not used because it is 0x00
-#define   WRITE_BURST       0x40            //write burst
-#define   READ_SINGLE       0x80            //read single
-#define   READ_BURST        0xC0            //read burst
-#define   BYTES_IN_RXFIFO   0x7F            //byte number in RXfifo
+#define		WRITE_SINGLE		0x00		//write single not used because it is 0x00
+#define		WRITE_BURST			0x40		//write burst
+#define		READ_SINGLE			0x80		//read single
+#define		READ_BURST			0xC0		//read burst
+#define		BYTES_IN_RXFIFO		0x7F		//byte number in RXfifo
 
 
-#define   ADDRESS_OFFSET	0		// Address to read or write too
-#define	  DATA_OFFSET		1		// Start of data to read or write
+#define		ADDRESS_OFFSET		0		// Address to read or write too
+#define		DATA_OFFSET			1		// Start of data to read or write
+
+
 
 /***************** Macros (Inline Functions) Definitions *********************/
 
@@ -22,50 +27,50 @@
 
 /************************** Variable Definitions *****************************/
 
-char modulation = 2;
-char frend0;
-char chan = 0;
+u8 modulation = 2;
+u8 frend0;
+u8 chan = 0;
 int pa = 12;
-char last_pa;
-char GDO0;
-char GDO2;
-char gdo_set=0;
-char spi = 0;
-char ccmode = 0;
+u8 last_pa;
+u8 GDO0;
+u8 GDO2;
+u8 gdo_set=0;
+u8 spi = 0;
+u8 ccmode = 0;
 float MHz = 433.92;
-char m4RxBw = 0;
-char m4DaRa;
-char m2DCOFF;
-char m2MODFM;
-char m2MANCH;
-char m2SYNCM;
-char m1FEC;
-char m1PRE;
-char m1CHSP;
-char pc1PQT;
-char pc1CRC_AF;
-char pc1APP_ST;
-char pc1ADRCHK;
-char pc0WDATA;
-char pc0PktForm;
-char pc0CRC_EN;
-char pc0LenConf;
-char trxstate = 0;
-char clb1[2]= {24,28};
-char clb2[2]= {31,38};
-char clb3[2]= {65,76};
-char clb4[2]= {77,79};
+u8 m4RxBw = 0;
+u8 m4DaRa;
+u8 m2DCOFF;
+u8 m2MODFM;
+u8 m2MANCH;
+u8 m2SYNCM;
+u8 m1FEC;
+u8 m1PRE;
+u8 m1CHSP;
+u8 pc1PQT;
+u8 pc1CRC_AF;
+u8 pc1APP_ST;
+u8 pc1ADRCHK;
+u8 pc0WDATA;
+u8 pc0PktForm;
+u8 pc0CRC_EN;
+u8 pc0LenConf;
+u8 trxstate = 0;
+u8 clb1[2]= {24,28};
+u8 clb2[2]= {31,38};
+u8 clb3[2]= {65,76};
+u8 clb4[2]= {77,79};
 
 //volatile char TransferInProgress = FALSE;
 volatile int TransferInProgress = FALSE;
 int Error = 0;
-char interrupt = FALSE;
+u8 interrupt = FALSE;
 
 u8 writeBuffer[MAX_DATA + DATA_OFFSET];
 u8 readBuffer [MAX_DATA + DATA_OFFSET /*+ DUMMY_SIZE*/];
 
 /****************************************************************/
-char PA_TABLE[8]      = {0x00,0xC0,0x00,0x00,0x00,0x00,0x00,0x00};
+u8 PA_TABLE[8]      = {0x00,0xC0,0x00,0x00,0x00,0x00,0x00,0x00};
 //                          -30  -20  -15  -10   0    5    7    10
 uint8_t PA_TABLE_315[8]  = {0x12,0x0D,0x1C,0x34,0x51,0x85,0xCB,0xC2,};             //300 - 348
 uint8_t PA_TABLE_433[8]  = {0x12,0x0E,0x1D,0x34,0x60,0x84,0xC8,0xC0,};             //387 - 464
@@ -74,7 +79,24 @@ uint8_t PA_TABLE_868[10] = {0x03,0x17,0x1D,0x26,0x37,0x50,0x86,0xCD,0xC5,0xC0,};
 //                          -30  -20  -15  -10  -6    0    5    7    10   11
 uint8_t PA_TABLE_915[10] = {0x03,0x0E,0x1E,0x27,0x38,0x8E,0x84,0xCC,0xC3,0xC0,};  //900 - 928
 
-/****************************************************************/
+
+
+
+/********************** Static function declarations *************************/
+
+static void CC1101_calibrate(XSpiPs *SpiPtr);
+static void CC1101_split_PKTCTRL1(XSpiPs* SpiPtr);
+static void CC1101_split_PKTCTRL0(XSpiPs* SpiPtr);
+static void CC1101_split_MDMCFG4(XSpiPs* SpiPtr);
+static void CC1101_split_MDMCFG2(XSpiPs* SpiPtr);
+static void CC1101_split_MDMCFG1(XSpiPs* SpiPtr);
+static void CC1101_regConfigSettings(XSpiPs* SpiPtr);
+static u8 CC1101_getState(XSpiPs* SpiPtr);
+
+
+
+
+/************************** Function definitions *****************************/
 
 /******************************************************************************
 *
@@ -87,8 +109,23 @@ uint8_t PA_TABLE_915[10] = {0x03,0x0E,0x1E,0x27,0x38,0x8E,0x84,0xCC,0xC3,0xC0,};
 * @note		None.
 *
 ******************************************************************************/
-void CC1101_setInterrupt(char interruptBool){
+void CC1101_setInterrupt(u8 interruptBool){
 	interrupt = interruptBool;
+}
+
+/******************************************************************************
+*
+* This function initializes the CC1101 before first use.
+*
+* @param	SpiPtr is a pointer to the SPI driver component to use.
+*
+* @return	None.
+*
+* @note		None.
+*
+******************************************************************************/
+void CC1101_init(XSpiPs *SpiPtr){
+	CC1101_regConfigSettings(SpiPtr);
 }
 
 
@@ -106,7 +143,7 @@ void CC1101_setInterrupt(char interruptBool){
 * @note		None.
 *
 ******************************************************************************/
-void CC1101_writeReg(XSpiPs *SpiPtr, char addr, char value){
+void CC1101_writeReg(XSpiPs *SpiPtr, u8 addr, u8 value){
 	u8 tempBuffer[]={addr,value};
 
 	if (interrupt){
@@ -142,7 +179,7 @@ void CC1101_writeReg(XSpiPs *SpiPtr, char addr, char value){
 * @note		None.
 *
 ******************************************************************************/
-void CC1101_writeBurstReg(XSpiPs *SpiPtr, char addr, char* buffer, char num){
+void CC1101_writeBurstReg(XSpiPs *SpiPtr, u8 addr, u8* buffer, u8 num){
 	writeBuffer[ADDRESS_OFFSET] = (addr | WRITE_BURST);
 	memcpy(writeBuffer+DATA_OFFSET, buffer, num);
 
@@ -172,17 +209,17 @@ void CC1101_writeBurstReg(XSpiPs *SpiPtr, char addr, char* buffer, char num){
 * @param	SpiPtr is a pointer to the SPI driver component to use.
 * @param	addr contains the address to write data to.
 *
-* @return	None.
+* @return	Chip Status Byte: Bits (6:4) comprise the STATE value and (3:0) contains the FIFO_BYTES_AVAILABLE.
 *
 * @note		None.
 *
 ******************************************************************************/
-void CC1101_writeStrobe(XSpiPs *SpiPtr, char addr){
+u8 CC1101_writeStrobe(XSpiPs *SpiPtr, u8 addr){
 	u8 tempBuffer=addr;
 
 	if (interrupt){
 		TransferInProgress = TRUE;
-		XSpiPs_Transfer(SpiPtr, &tempBuffer, NULL, sizeof(tempBuffer));
+		XSpiPs_Transfer(SpiPtr, &tempBuffer, &tempBuffer, sizeof(tempBuffer));
 
 		int i=0;
 		while (TransferInProgress){
@@ -193,9 +230,9 @@ void CC1101_writeStrobe(XSpiPs *SpiPtr, char addr){
 			}
 		}
 	}else{
-		XSpiPs_PolledTransfer(SpiPtr, &tempBuffer, NULL, sizeof(tempBuffer));
+		XSpiPs_PolledTransfer(SpiPtr, &tempBuffer, &tempBuffer, sizeof(tempBuffer));
 	}
-
+	return tempBuffer;
 }
 
 
@@ -212,7 +249,7 @@ void CC1101_writeStrobe(XSpiPs *SpiPtr, char addr){
 * @note		None.
 *
 ******************************************************************************/
-char CC1101_readReg(XSpiPs *SpiPtr, char addr){
+u8 CC1101_readReg(XSpiPs *SpiPtr, u8 addr){
 	u8 tempBuffer[]={(addr|READ_SINGLE),0};
 
 	if (interrupt){
@@ -250,7 +287,7 @@ char CC1101_readReg(XSpiPs *SpiPtr, char addr){
 * @note		None.
 *
 ******************************************************************************/
-void CC1101_readBurstReg(XSpiPs *SpiPtr, char addr, char* buffer, char num){
+void CC1101_readBurstReg(XSpiPs *SpiPtr, u8 addr, u8* buffer, u8 num){
 	writeBuffer[ADDRESS_OFFSET] = (addr | READ_BURST);
 
 	if (interrupt){
@@ -266,10 +303,10 @@ void CC1101_readBurstReg(XSpiPs *SpiPtr, char addr, char* buffer, char num){
 			}
 		}
 	}else{
-		XSpiPs_PolledTransfer(SpiPtr, writeBuffer, readBuffer, num);
+		XSpiPs_PolledTransfer(SpiPtr, writeBuffer, readBuffer, num+DATA_OFFSET);
 	}
 
-	memcpy(buffer, readBuffer+DATA_OFFSET, num);
+	memcpy(buffer, readBuffer+DATA_OFFSET, num+DATA_OFFSET);
 }
 
 
@@ -286,7 +323,7 @@ void CC1101_readBurstReg(XSpiPs *SpiPtr, char addr, char* buffer, char num){
 * @note		None.
 *
 ******************************************************************************/
-char CC1101_readStatus(XSpiPs *SpiPtr, char addr){
+u8 CC1101_readStatus(XSpiPs *SpiPtr, u8 addr){
 	u8 tempBuffer[] = {(addr | READ_BURST),0};
 
 	if (interrupt){
@@ -321,10 +358,10 @@ char CC1101_readStatus(XSpiPs *SpiPtr, char addr){
 * @note		None.
 *
 ******************************************************************************/
-void CC1101_setCCMode(XSpiPs *SpiPtr, char s){
+void CC1101_setCCMode(XSpiPs *SpiPtr, u8 s){
 	ccmode = s;
 	if(ccmode==1){
-		CC1101_writeReg(SpiPtr, CC1101_IOCFG2,      0x0B);
+		CC1101_writeReg(SpiPtr, CC1101_IOCFG2,      0x06);
 		CC1101_writeReg(SpiPtr, CC1101_IOCFG0,      0x06);
 		CC1101_writeReg(SpiPtr, CC1101_PKTCTRL0,    0x05);
 		CC1101_writeReg(SpiPtr, CC1101_MDMCFG3,     0xF8);
@@ -349,10 +386,10 @@ void CC1101_setCCMode(XSpiPs *SpiPtr, char s){
 *
 * @return	None.
 *
-* @note		None.
+* @note		0 for 2-FSK, 1 for GFSK, 2 for ASK/OOK, 3 for 4-FSK and 4 for MSK
 *
 ******************************************************************************/
-void CC1101_setModulation(XSpiPs *SpiPtr, char m){
+void CC1101_setModulation(XSpiPs *SpiPtr, u8 m){
 	if(m>4){m=4;}
 	modulation = m;
 	CC1101_split_MDMCFG2(SpiPtr);
@@ -384,40 +421,22 @@ void CC1101_setModulation(XSpiPs *SpiPtr, char m){
 * @note		None.
 *
 ******************************************************************************/
-void CC1101_setMHZ(XSpiPs *SpiInstancePtr, float mhz){
-	char freq2 = 0;
-	char freq1 = 0;
-	char freq0 = 0;
+void CC1101_setMHZ(XSpiPs *SpiPtr, float mhz){
+	u8 freq[3] = {0,0,0};
 
 	MHz = mhz;
 
-	for(char i=0; i==0;/*no incrementer*/){
-		if (mhz >= 26){
-			mhz-=26;
-			freq2+=1;
-		}
-		else if (mhz >= 0.1015625){
-			mhz-=0.1015625;
-			freq1+=1;
-		}
-		else if (mhz >= 0.00039675){
-			mhz-=0.00039675;
-			freq0+=1;
-		}
-		else{
-			i=1; //increment to break out of the loop
-		}
-	}
-	if (freq0 > 255){
-		freq1+=1;
-		freq0-=256;
-	}
 
-	CC1101_writeReg(SpiInstancePtr, CC1101_FREQ2, freq2);
-	CC1101_writeReg(SpiInstancePtr, CC1101_FREQ1, freq1);
-	CC1101_writeReg(SpiInstancePtr, CC1101_FREQ0, freq0);
+	uint32_t f = ((mhz * 65536.0) / CC1101_CRYSTAL_FREQ);
+	freq[0]=(f & 0xff);
+	freq[1]=((f >> 8) & 0xff);
+	freq[2]=((f >> 16) & 0xff);
 
-	CC1101_calibrate(SpiInstancePtr);
+	CC1101_writeReg(SpiPtr, CC1101_FREQ2, freq[2]);
+	CC1101_writeReg(SpiPtr, CC1101_FREQ1, freq[1]);
+	CC1101_writeReg(SpiPtr, CC1101_FREQ0, freq[0]);
+
+	CC1101_calibrate(SpiPtr);
 
 }
 
@@ -430,10 +449,10 @@ void CC1101_setMHZ(XSpiPs *SpiInstancePtr, float mhz){
 *
 * @return	None.
 *
-* @note		None.
+* @note		This function is static.
 *
 ******************************************************************************/
-void CC1101_calibrate(XSpiPs *SpiPtr){
+static void CC1101_calibrate(XSpiPs *SpiPtr){
 	if (MHz >= 300 && MHz <= 348){
 		CC1101_writeReg(SpiPtr, CC1101_FSCTRL0, map(MHz, 300, 348, clb1[0], clb1[1]));
 		if (MHz < 322.88){CC1101_writeReg(SpiPtr, CC1101_TEST0,0x0B);}
@@ -557,21 +576,15 @@ void CC1101_setPA(XSpiPs *SpiPtr, int p){
 *
 * @return	None.
 *
-* @note		None.
+* @note		This function is static.
 *
 ******************************************************************************/
-void CC1101_split_PKTCTRL1(XSpiPs* SpiPtr){
-	char calc = CC1101_readStatus(SpiPtr, CC1101_PKTCTRL1);
-	pc1PQT = 0;
-	pc1CRC_AF = 0;
-	pc1APP_ST = 0;
-	pc1ADRCHK = 0;
-	for (char i = 0; i==0;){
-		if (calc >= 32){calc-=32; pc1PQT+=32;}
-		else if (calc >= 8){calc-=8; pc1CRC_AF+=8;}
-		else if (calc >= 4){calc-=4; pc1APP_ST+=4;}
-		else {pc1ADRCHK = calc; i=1;}
-	}
+static void CC1101_split_PKTCTRL1(XSpiPs* SpiPtr){
+	u8 calc = CC1101_readStatus(SpiPtr, CC1101_PKTCTRL1);
+	pc1PQT		= calc & 0xE0;
+	pc1CRC_AF	= calc & 0x08;
+	pc1APP_ST	= calc & 0x04;
+	pc1ADRCHK	= calc & 0x03;
 }
 
 /******************************************************************************
@@ -582,21 +595,16 @@ void CC1101_split_PKTCTRL1(XSpiPs* SpiPtr){
 *
 * @return	None.
 *
-* @note		None.
+* @note		This function is static.
 *
 ******************************************************************************/
-void CC1101_split_PKTCTRL0(XSpiPs* SpiPtr){
-	char calc = CC1101_readStatus(SpiPtr, CC1101_PKTCTRL0);
-	pc0WDATA = 0;
-	pc0PktForm = 0;
-	pc0CRC_EN = 0;
-	pc0LenConf = 0;
-	for (char i = 0; i==0;){
-		if (calc >= 64){calc-=64; pc0WDATA+=64;}
-		else if (calc >= 16){calc-=16; pc0PktForm+=16;}
-		else if (calc >= 4){calc-=4; pc0CRC_EN+=4;}
-		else {pc0LenConf = calc; i=1;}
-	}
+static void CC1101_split_PKTCTRL0(XSpiPs* SpiPtr){
+	u8 calc = CC1101_readStatus(SpiPtr, CC1101_PKTCTRL0);
+	pc0WDATA	= calc & 0x40;
+	pc0PktForm	= calc & 0x30;
+	pc0CRC_EN	= calc & 0x04;
+	pc0LenConf	= calc & 0x03;
+
 }
 
 /******************************************************************************
@@ -607,18 +615,14 @@ void CC1101_split_PKTCTRL0(XSpiPs* SpiPtr){
 *
 * @return	None.
 *
-* @note		None.
+* @note		This function is static.
 *
 ******************************************************************************/
-void CC1101_split_MDMCFG4(XSpiPs* SpiPtr){
-	char calc = CC1101_readStatus(SpiPtr, CC1101_MDMCFG4);
-	m4RxBw = 0;
-	m4DaRa = 0;
-	for (char i = 0; i==0;){
-		if (calc >= 64){calc-=64; m4RxBw+=64;}
-		else if (calc >= 16){calc -= 16; m4RxBw+=16;}
-		else{m4DaRa = calc; i=1;}
-	}
+static void CC1101_split_MDMCFG4(XSpiPs* SpiPtr){
+	u8 calc = CC1101_readStatus(SpiPtr, CC1101_MDMCFG4);
+	m4RxBw = calc & 0xF0;
+	m4DaRa = calc & 0x0F;
+
 }
 
 /******************************************************************************
@@ -629,21 +633,15 @@ void CC1101_split_MDMCFG4(XSpiPs* SpiPtr){
 *
 * @return	None.
 *
-* @note		None.
+* @note		This function is static.
 *
 ******************************************************************************/
-void CC1101_split_MDMCFG2(XSpiPs* SpiPtr){
-	char calc = CC1101_readStatus(SpiPtr, CC1101_MDMCFG2);
-	m2DCOFF = 0;
-	m2MODFM = 0;
-	m2MANCH = 0;
-	m2SYNCM = 0;
-	for (char i = 0; i==0;){
-		if (calc >= 128){calc-=128; m2DCOFF+=128;}
-		else if (calc >= 16){calc-=16; m2MODFM+=16;}
-		else if (calc >= 8){calc-=8; m2MANCH+=8;}
-		else{m2SYNCM = calc; i=1;}
-	}
+static void CC1101_split_MDMCFG2(XSpiPs* SpiPtr){
+	u8 calc = CC1101_readStatus(SpiPtr, CC1101_MDMCFG2);
+	m2DCOFF	= calc & 0x80;
+	m2MODFM = calc & 0x70;
+	m2MANCH = calc & 0x08;
+	m2SYNCM = calc & 0x07;
 }
 
 /******************************************************************************
@@ -654,19 +652,14 @@ void CC1101_split_MDMCFG2(XSpiPs* SpiPtr){
 *
 * @return	None.
 *
-* @note		None.
+* @note		This function is static.
 *
 ******************************************************************************/
-void CC1101_split_MDMCFG1(XSpiPs* SpiPtr){
-	char calc = CC1101_readStatus(SpiPtr, CC1101_MDMCFG1);
-	m1FEC = 0;
-	m1PRE = 0;
-	m1CHSP = 0;
-	for (char i = 0; i==0;){
-		if (calc >= 128){calc-=128; m1FEC+=128;}
-		else if (calc >= 16){calc-=16; m1PRE+=16;}
-		else {m1CHSP = calc; i=1;}
-	}
+static void CC1101_split_MDMCFG1(XSpiPs* SpiPtr){
+	u8 calc = CC1101_readStatus(SpiPtr, CC1101_MDMCFG1);
+	m1FEC	= calc & 0x80;
+	m1PRE	= calc & 0x70;
+	m1CHSP	= calc & 0x03;
 }
 
 
@@ -679,10 +672,10 @@ void CC1101_split_MDMCFG1(XSpiPs* SpiPtr){
 *
 * @return	None.
 *
-* @note		None.
+* @note		This function is static.
 *
 ******************************************************************************/
-void CC1101_regConfigSettings(XSpiPs* SpiPtr){
+static void CC1101_regConfigSettings(XSpiPs* SpiPtr){
 	CC1101_writeReg(SpiPtr, CC1101_FSCTRL1,  0x06);
 
 	CC1101_setCCMode(SpiPtr, ccmode);
@@ -709,7 +702,25 @@ void CC1101_regConfigSettings(XSpiPs* SpiPtr){
 	CC1101_writeReg(SpiPtr, CC1101_TEST0,    0x09);
 	CC1101_writeReg(SpiPtr, CC1101_PKTCTRL1, 0x04);
 	CC1101_writeReg(SpiPtr, CC1101_ADDR,     0x00);
-	CC1101_writeReg(SpiPtr, CC1101_PKTLEN,   0x00);
+	CC1101_writeReg(SpiPtr, CC1101_FIFOTHR,	 0x0F);
+}
+
+
+/******************************************************************************
+*
+* This function gets the status of the CC1101 chip.
+*
+* @param	SpiPtr is a pointer to the SPI driver component to use.
+*
+* @return	status.
+*
+* @note		None.
+*
+******************************************************************************/
+static u8 CC1101_getState(XSpiPs* SpiPtr){
+	u8 status = 0;
+	status = CC1101_writeStrobe(SpiPtr, CC1101_SNOP);
+	return ((status & 0b01110000) >> 4);
 }
 
 
@@ -761,12 +772,14 @@ void CC1101_setRX(XSpiPs* SpiPtr){
 * @note		None.
 *
 ******************************************************************************/
-void CC1101_sendData(XSpiPs* SpiPtr, char *txBuffer, char size){
+void CC1101_sendData(XSpiPs* SpiPtr, u8 *txBuffer, u8 size){
 	CC1101_writeReg(SpiPtr, CC1101_TXFIFO, size);
 	CC1101_writeBurstReg(SpiPtr, CC1101_TXFIFO, txBuffer, size);
 	CC1101_writeStrobe(SpiPtr, CC1101_SIDLE);
 	CC1101_writeStrobe(SpiPtr, CC1101_STX);
-	/*Delay of een interupt zodat ik weet wanneer het verzenden klaar is*/
+	while(CC1101_getState(SpiPtr) != 0){ // waits till the data is sent before the buffer is flushed
+		usleep(10);
+	}
 	CC1101_writeStrobe(SpiPtr, CC1101_SFTX);
 }
 
@@ -783,19 +796,193 @@ void CC1101_sendData(XSpiPs* SpiPtr, char *txBuffer, char size){
 * @note		None.
 *
 ******************************************************************************/
-char CC1101_receiveData(XSpiPs* SpiPtr, char *rxBuffer){
-	char size;
+u8 CC1101_receiveData(XSpiPs* SpiPtr, u8 *rxBuffer){
+	u8 size;
 
 	if(CC1101_readStatus(SpiPtr, CC1101_RXBYTES) & BYTES_IN_RXFIFO){
+		//xil_printf("data in fifo\r\n");
 		size = CC1101_readReg(SpiPtr, CC1101_RXFIFO);
+		if (size > 61) {size = 61;}
 		CC1101_readBurstReg(SpiPtr, CC1101_RXFIFO, rxBuffer, size);
 		CC1101_writeStrobe(SpiPtr, CC1101_SFRX);
+		usleep(10);
 		CC1101_writeStrobe(SpiPtr, CC1101_SRX);
+		usleep(10);
 		return size;
 	} else {
+		//xil_printf("no data in fifo\r\n");
 		CC1101_writeStrobe(SpiPtr, CC1101_SFRX);
 		CC1101_writeStrobe(SpiPtr, CC1101_SRX);
 		return 0;
 	}
 }
 
+
+/******************************************************************************
+*
+* This function sets the sync-word qualifier mode.
+*
+* @param	SpiPtr is a pointer to the SPI driver component to use.
+* @param	v is the desired sync-word mode.
+*
+* @return	None.
+*
+* @note		None.
+*
+******************************************************************************/
+void CC1101_setSyncMode(XSpiPs* SpiPtr, u8 v){
+	CC1101_split_MDMCFG2(SpiPtr);
+	m2SYNCM = 0;
+	if (v>7){v=7;}
+	m2SYNCM=v;
+	CC1101_writeReg(SpiPtr, CC1101_MDMCFG2, m2DCOFF+m2MODFM+m2MANCH+m2SYNCM);
+}
+
+
+/******************************************************************************
+*
+* This function en-/disables the CRC.
+*
+* @param	SpiPtr is a pointer to the SPI driver component to use.
+* @param	v is 1 for enable and 0 for disable.
+*
+* @return	None.
+*
+* @note		None.
+*
+******************************************************************************/
+void CC1101_setCRC(XSpiPs* SpiPtr, u8 v){
+	CC1101_split_PKTCTRL0(SpiPtr);
+	pc0CRC_EN = 0;
+	if (v==1){pc0CRC_EN=4;}
+	CC1101_writeReg(SpiPtr, CC1101_PKTCTRL0, pc0WDATA+pc0PktForm+pc0CRC_EN+pc0LenConf);
+}
+
+
+/******************************************************************************
+*
+* This function sets the desired datarate.
+*
+* @param	SpiPtr is a pointer to the SPI driver component to use.
+* @param	d is the datarate in kbit/s.
+*
+* @return	None.
+*
+* @note		None.
+*
+******************************************************************************/
+void CC1101_setDRate(XSpiPs* SpiPtr, double d) {
+	CC1101_split_MDMCFG4(SpiPtr);
+	double c = d;
+
+	uint32_t xosc = 26000;
+	m4DaRa = log2((c * (double )(1ULL << 20)) / xosc);
+	uint32_t MDMCFG3 = round(c * ((double) (1ULL << (28 - m4DaRa)) / xosc) - 256.);
+
+	if (MDMCFG3 == 256) {
+		MDMCFG3 = 0;
+		m4DaRa++;
+	}
+
+	CC1101_writeReg(SpiPtr, CC1101_MDMCFG4, m4RxBw + m4DaRa);
+	CC1101_writeReg(SpiPtr, CC1101_MDMCFG3, MDMCFG3);
+}
+
+
+/******************************************************************************
+*
+* This function checks if there is incoming data.
+*
+* @param	SpiPtr is a pointer to the SPI driver component to use.
+*
+* @return	1 when there is data incoming and 0 when no data.
+*
+* @note		GDO0 should be configured to 0x06.
+*
+******************************************************************************/
+u8	 CC1101_checkReceiveFlag(XSpiPs* SpiPtr){
+	u8 receiveFlag;
+	receiveFlag = CC1101_readStatus(SpiPtr, CC1101_PKTSTATUS);
+	return (receiveFlag & 0b00001000) >> 3;
+}
+
+
+/******************************************************************************
+*
+* This function returns the last estimated RSSI value.
+*
+* @param	SpiPtr is a pointer to the SPI driver component to use.
+*
+* @return	1 when there is data incoming and 0 when no data.
+*
+* @note		None.
+*
+******************************************************************************/
+u8 CC1101_getRssi(XSpiPs* SpiPtr) {
+	u8 rssi;
+	rssi = CC1101_readStatus(SpiPtr, CC1101_RSSI);
+	if (rssi >= 128) {
+		rssi = (rssi - 256) / 2 - 74;
+	} else {
+		rssi = (rssi / 2) - 74;
+	}
+	return rssi;
+}
+
+
+/****************************************************************
+*
+* This function sets the Forward Error Correction (FEC).
+*
+* @param	SpiPtr is a pointer to the SPI driver component to use.
+* @param	v is 1 for enable and 0 for disable
+*
+* @return	None.
+*
+* @note		None.
+*
+****************************************************************/
+void CC1101_setFEC(XSpiPs* SpiPtr, u8 v){
+CC1101_split_MDMCFG1(SpiPtr);
+m1FEC=0;
+if (v==1){m1FEC=128;}
+CC1101_writeReg(SpiPtr, CC1101_MDMCFG1, m1FEC+m1PRE+m1CHSP);
+}
+
+
+/****************************************************************
+*
+* This function sets the packet length configuration.
+*
+* @param	SpiPtr is a pointer to the SPI driver component to use.
+* @param	v is the desired packet length mode.
+*
+* @return	None.
+*
+* @note		0 for fixed packet length, 1 for variable packet length, 2 for infinite packet length, 3 is reserved
+*
+****************************************************************/
+void CC1101_setLengthConfig(XSpiPs* SpiPtr, u8 v){
+CC1101_split_PKTCTRL0(SpiPtr);
+pc0LenConf = 0;
+if (v>3){v=3;}
+pc0LenConf = v;
+CC1101_writeReg(SpiPtr, CC1101_PKTCTRL0, pc0WDATA+pc0PktForm+pc0CRC_EN+pc0LenConf);
+}
+
+
+/****************************************************************
+*
+* This function sets the (fixed) packet length.
+*
+* @param	SpiPtr is a pointer to the SPI driver component to use.
+* @param	l is the desired packet length.
+*
+* @return	None.
+*
+* @note		None.
+*
+****************************************************************/
+void CC1101_setPacketLength(XSpiPs* SpiPtr, u8 l){
+CC1101_writeReg(SpiPtr, CC1101_PKTLEN, l);
+}
