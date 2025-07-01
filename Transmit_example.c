@@ -1,6 +1,6 @@
 /* ---------------------------------------------------------------------------- *
  * Description :
- * Example of using the CC1101
+ * Example for using the CC1101
  *
  *
  * Note :
@@ -14,7 +14,7 @@
  * Authors:
  * 		Patrick Huisman
  *
- * Date: March 2025
+ * Date: March 2024
  * ---------------------------------------------------------------------------- */
 
 
@@ -24,18 +24,16 @@
 #include <stdio.h>
 #include "platform.h"
 #include "xscugic.h"
-#include "xtmrctr.h"
 #include "xil_printf.h"
 #include "sleep.h"
-#include "xtime_l.h"
 #include "xgpio.h"
 #include "xparameters.h"
-#include "xscutimer.h"
-//#include "xiicps.h"
-#include "xadcps.h"
 #include "xspips.h"
 #ifdef SDT
 #include "xinterrupt_wrap.h"
+//#include "xiltimer.h"
+#else
+//#include "xtime_l.h"
 #endif
 #include "xplatform_info.h"
 #include "CC1101.h"
@@ -66,38 +64,23 @@
 
 #define SPI_SELECT_1	0x00
 #define SPI_SELECT_0	0x00
-//#define XADC_DEVICE_ID XPAR_XADCPS_0_DEVICE_ID
-//#define SWT_DEVICE_ID XPAR_GPIO_5_DEVICE_ID
-//#define BTNS_DEVICE_ID XPAR_GPIO_2_DEVICE_ID
 
 
 /*****************************************************************************/
 /************************** Driver instances and pointers ********************/
 /*****************************************************************************/
-//static XScuTimer my_Timer;  // SCU Timer instance
-//static XScuGic my_Gic ;  	// GIC instance
 static XScuGic IntcInstance;
-//static XAdcPs XAdcInst; 	// XADC driver instance
 static XSpiPs SpiInstance;
-//static XGpio switches, buttons;
 
 
 /*****************************************************************************/
 /************************** Prototype of Interrupt Handler (aka ISR) *********/
 /*****************************************************************************/
-//void my_timer_interrupt_handler(void * CallBackRef);
 void SpiPsHandler(void *CallBackRef, u32 StatusEvent, unsigned int ByteCount);
 
 /*****************************************************************************/
 /************************** Prototype of API Functions ***********************/
 /*****************************************************************************/
-//int Init_GIC(void);
-//int Init_SCUTimer(void);
-//int addScuTimerToInterruptSystem(void);
-//int AdcConfig();
-//float ReadAdc(int channelToRead);
-
-//u32 XGpio_DiscreteRead(XGpio *InstancePtr, unsigned Channel);
 
 static int SpiPsSetupIntrSystem(XScuGic *IntcInstancePtr,
 	      XSpiPs *SpiInstancePtr, u16 SpiIntrId);
@@ -108,22 +91,21 @@ static void SpiPsDisableIntrSystem(XScuGic *IntcInstancePtr, u16 SpiIntrId);
 /************************** Global variables *********************************/
 /*****************************************************************************/
 
-int Test;
 
 
 /*****************************************************************************/
 /************************** Main program *************************************/
 /*****************************************************************************/
 int main(){
-	//int Status;
-	//u8 *BufferPtr;
-	//u8 UniqueValue;
-	//u32 Count;
 	u32 MaxSize = MAX_DATA;
 	u32 ChipSelect = SPI_SELECT_1;
 	XSpiPs_Config *SpiConfig;
 	u32 Platform;
 	u16 SpiIntrId = XPAR_XSPIPS_1_INTR;
+	u8 receive = FALSE;
+
+
+
 
 	Platform = XGetPlatform_Info();
 	if ((Platform == XPLAT_ZYNQ_ULTRA_MP) || (Platform == XPLAT_VERSAL)) {
@@ -140,7 +122,7 @@ int main(){
 #ifndef SDT
 	SpiConfig = XSpiPs_LookupConfig(XPAR_XSPIPS_0_DEVICE_ID);
 #else
-	SpiConfig = XSpiPs_LookupConfig(BaseAddress);
+	SpiConfig = XSpiPs_LookupConfig(XPAR_XSPIPS_0_BASEADDR);
 #endif
 	if (NULL == SpiConfig) {
 		xil_printf("SPI  configuration lookup Failed \r\n");
@@ -195,22 +177,22 @@ int main(){
 	XSpiPs_SetClkPrescaler(&SpiInstance, XSPIPS_CLK_PRESCALE_256);
 	xil_printf("SPI set options \r\n");
 	/*
-	 * Assert the EEPROM chip select
+	 * Assert the CC1101 chip select
 	 */
 	XSpiPs_SetSlaveSelect(&SpiInstance, ChipSelect);
 	xil_printf("SPI set slave select \r\n");
 
-	char packetLength = 0x32;
+	CC1101_init(&SpiInstance);
+	CC1101_setCCMode(&SpiInstance, 1);
+	CC1101_setModulation(&SpiInstance, 4);
+	CC1101_setSyncMode(&SpiInstance, 3);
+	CC1101_setMHZ(&SpiInstance, 430);
+	CC1101_setPA(&SpiInstance, 2);
+	CC1101_setCRC(&SpiInstance, 0);
+	CC1101_setDRate(&SpiInstance, 200.0);
 
-	CC1101_writeReg(&SpiInstance, CC1101_PKTLEN, packetLength);
 
-	sleep(1);
 
-	if (CC1101_readReg(&SpiInstance, CC1101_PKTLEN) == packetLength){
-		xil_printf("Correctly wrote and read packet length register \r\n");
-	} else {
-		xil_printf("Failed to correctly write and read packet length register \r\n");
-	}
 
 #ifndef SDT
 	SpiPsDisableIntrSystem(&IntcInstance, SpiIntrId);
@@ -218,12 +200,17 @@ int main(){
 	XDisconnectInterruptCntrl(SpiConfig->IntrId, SpiConfig->IntrParent);
 #endif
 
-	/*
+	u8 transmit_byte[56] = {72,101,108,108,111,32,87,111,114,108,100}; //"Hello World"
+	int i = 0;
 	xil_printf("Entering main loop \r\n");
 	while (1)
 	{
-		// Do nothing
-	}*/
+		CC1101_sendData(&SpiInstance, transmit_byte, 11);
+		xil_printf("send packet %d\r\n", ++i);
+
+		usleep(100000);
+
+	}
 	xil_printf("Disabled SPI interrupt\r\n\n");
 	return XST_SUCCESS;
 }
